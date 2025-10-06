@@ -317,19 +317,30 @@
     });
 
     // Download button
-    document.getElementById('downloadBtn').addEventListener('click', async () => {
+    // Find your download button click handler and update it:
+    document.getElementById('downloadBtn').addEventListener('click', async function() {
+        const memeId = 'YOUR_MEME_ID'; // Get this from the page
+        
         try {
-            await fetch(`/api/meme/${memeId}/download`, { method: 'POST' });
+            const response = await fetch(`/api/meme/${memeId}/download`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            const link = document.createElement('a');
-            link.href = currentMeme.s3_url;
-            link.download = currentMeme.title;
-            link.click();
+            const data = await response.json();
             
-            const downloadsElement = document.getElementById('downloadsCount');
-            downloadsElement.textContent = parseInt(downloadsElement.textContent) + 1;
+            if (data.success && data.download_url) {
+                // Open the presigned URL in a new tab to trigger download
+                window.open(data.download_url, '_blank');
+            } else {
+                console.error('Download failed:', data.error);
+                alert('Failed to download meme');
+            }
         } catch (error) {
-            console.error('Error downloading meme:', error);
+            console.error('Download error:', error);
+            alert('Error downloading meme');
         }
     });
 
@@ -352,4 +363,5 @@
     // Load meme on page load
     loadMeme();
 </script>
+
 {% endblock %}
