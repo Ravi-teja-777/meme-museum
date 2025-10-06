@@ -168,6 +168,7 @@
         <div class="header-actions">
             <a href="{{ url_for('upload_page') }}" class="btn btn-primary">Upload New Meme</a>
             <a href="{{ url_for('profile') }}" class="btn btn-secondary">Edit Profile</a>
+            <button onclick="logout()" class="btn btn-secondary" style="background: rgba(255,255,255,0.2); border: 2px solid white;">Logout</button>
         </div>
     </div>
 </div>
@@ -271,6 +272,28 @@
         `;
         
         return card;
+    }
+
+    // Logout function
+    async function logout() {
+        try {
+            const response = await fetch('/api/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                window.location.href = '/';
+            }
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Fallback to GET method
+            window.location.href = '/api/logout';
+        }
     }
 
     // Load data on page load
