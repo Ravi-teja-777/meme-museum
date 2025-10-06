@@ -441,6 +441,16 @@ def api_get_memes():
         
         memes = resp.get('Items', [])
         sort_by = request.args.get('sort_by', 'created_at')
+        
+        # Ensure numeric fields exist for sorting
+        for meme in memes:
+            if 'likes' not in meme:
+                meme['likes'] = 0
+            if 'views' not in meme:
+                meme['views'] = 0
+            if 'downloads' not in meme:
+                meme['downloads'] = 0
+        
         memes.sort(key=lambda x: x.get(sort_by if sort_by in ['likes','views'] else 'created_at', 0), reverse=True)
         
         return jsonify({'success': True, 'count': len(memes), 'memes': json.loads(json.dumps(memes, default=decimal_default))}), 200
@@ -454,36 +464,65 @@ def api_get_meme(meme_id):
         if 'Item' not in resp:
             return jsonify({'error': 'Not found'}), 404
         
-        memes_table.update_item(Key={'meme_id': meme_id}, UpdateExpression='SET views = views + :i',
-                               ExpressionAttributeValues={':i': 1})
+        # Safely increment views - handle case where attribute doesn't exist
+        try:
+            memes_table.update_item(
+                Key={'meme_id': meme_id}, 
+                UpdateExpression='SET #v = if_not_exists(#v, :start) + :inc',
+                ExpressionAttributeNames={'#v': 'views'},
+                ExpressionAttributeValues={':start': 0, ':inc': 1}
+            )
+        except Exception as view_error:
+            print(f"View count update error: {view_error}")
         
         if 'username' in session:
             log_activity(session['user_id'], session['username'], meme_id, 'view')
         
-        return jsonify({'success': True, 'meme': json.loads(json.dumps(resp['Item'], default=decimal_default))}), 200
+        # Fetch the updated item
+        resp = memes_table.get_item(Key={'meme_id': meme_id})
+        meme = resp['Item']
+        
+        # Ensure numeric fields exist
+        if 'views' not in meme:
+            meme['views'] = 0
+        if 'likes' not in meme:
+            meme['likes'] = 0
+        if 'downloads' not in meme:
+            meme['downloads'] = 0
+        
+        return jsonify({'success': True, 'meme': json.loads(json.dumps(meme, default=decimal_default))}), 200
     except Exception as e:
+        print(f"Error in api_get_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/meme/<meme_id>/like', methods=['POST'])
 @login_required
 def api_like_meme(meme_id):
     try:
-        memes_table.update_item(Key={'meme_id': meme_id}, UpdateExpression='SET likes = likes + :i',
-                               ExpressionAttributeValues={':i': 1})
+        memes_table.update_item(
+            Key={'meme_id': meme_id}, 
+            UpdateExpression='SET likes = if_not_exists(likes, :start) + :inc',
+            ExpressionAttributeValues={':start': 0, ':inc': 1}
+        )
         log_activity(session['user_id'], session['username'], meme_id, 'like')
         return jsonify({'success': True}), 200
     except Exception as e:
+        print(f"Error in api_like_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/meme/<meme_id>/download', methods=['POST'])
 def api_download_meme(meme_id):
     try:
-        memes_table.update_item(Key={'meme_id': meme_id}, UpdateExpression='SET downloads = downloads + :i',
-                               ExpressionAttributeValues={':i': 1})
+        memes_table.update_item(
+            Key={'meme_id': meme_id}, 
+            UpdateExpression='SET downloads = if_not_exists(downloads, :start) + :inc',
+            ExpressionAttributeValues={':start': 0, ':inc': 1}
+        )
         if 'username' in session:
             log_activity(session['user_id'], session['username'], meme_id, 'download')
         return jsonify({'success': True}), 200
     except Exception as e:
+        print(f"Error in api_download_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/meme/<meme_id>/delete', methods=['DELETE'])
@@ -498,17 +537,39 @@ def api_delete_meme(meme_id):
         if meme['uploader_id'] != session['user_id']:
             return jsonify({'error': 'Unauthorized'}), 403
         
-        s3.delete_object(Bucket=BUCKET_NAME, Key=meme['s3_key'])
+        # Delete from S3
+        try:
+            s3.delete_object(Bucket=BUCKET_NAME, Key=meme['s3_key'])
+        except Exception as s3_error:
+            print(f"S3 deletion error: {s3_error}")
+        
+        # Delete from DynamoDB
         memes_table.delete_item(Key={'meme_id': meme_id})
         
-        users_table.update_item(Key={'username': session['username']}, UpdateExpression='SET memes_uploaded = memes_uploaded - :i',
-                               ExpressionAttributeValues={':i': 1})
-        categories_table.update_item(Key={'category_name': meme['category']}, UpdateExpression='SET meme_count = meme_count - :i',
-                                    ExpressionAttributeValues={':i': 1})
+        # Update user stats - safely decrement
+        try:
+            users_table.update_item(
+                Key={'username': session['username']}, 
+                UpdateExpression='SET memes_uploaded = if_not_exists(memes_uploaded, :start) - :dec',
+                ExpressionAttributeValues={':start': 1, ':dec': 1}
+            )
+        except Exception as user_error:
+            print(f"User stats update error: {user_error}")
+        
+        # Update category stats - safely decrement
+        try:
+            categories_table.update_item(
+                Key={'category_name': meme['category']}, 
+                UpdateExpression='SET meme_count = if_not_exists(meme_count, :start) - :dec',
+                ExpressionAttributeValues={':start': 1, ':dec': 1}
+            )
+        except Exception as cat_error:
+            print(f"Category stats update error: {cat_error}")
         
         log_activity(session['user_id'], session['username'], meme_id, 'delete')
         return jsonify({'success': True}), 200
     except Exception as e:
+        print(f"Error in api_delete_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Search & Filter
@@ -705,4 +766,5 @@ if __name__ == '__main__':
         print("⚠ WARNING: Starting with missing AWS resources!")
         print("Some features may not work properly.\n")
     
+
     app.run(host='0.0.0.0', port=5000, debug=True)
