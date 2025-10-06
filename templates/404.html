@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}404 - Page Not Found{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .error-container {
+        min-height: 70vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .error-content {
+        max-width: 600px;
+    }
+
+    .error-code {
+        font-size: 8rem;
+        font-weight: 700;
+        color: var(--primary);
+        line-height: 1;
+        margin-bottom: 1rem;
+    }
+
+    .error-title {
+        font-size: 2rem;
+        color: var(--dark);
+        margin-bottom: 1rem;
+    }
+
+    .error-message {
+        color: var(--gray);
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .error-emoji {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .error-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-content">
+        <div class="error-emoji">🤔</div>
+        <div class="error-code">404</div>
+        <h1 class="error-title">Page Not Found</h1>
+        <p class="error-message">
+            Oops! The page you're looking for doesn't exist. It might have been moved or deleted.
+        </p>
+        <div class="error-actions">
+            <a href="{{ url_for('home') }}" class="btn btn-primary">Go Home</a>
+            <a href="{{ url_for('gallery') }}" class="btn btn-secondary">Browse Gallery</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

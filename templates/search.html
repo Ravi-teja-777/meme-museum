@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .search-header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #533483 100%);
+        color: var(--white);
+        padding: 4rem 2rem;
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .search-header h1 {
+        font-size: 2.8rem;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+    }
+
+    .search-header p {
+        font-size: 1.1rem;
+        opacity: 0.9;
+        margin-bottom: 2rem;
+    }
+
+    .search-box {
+        max-width: 700px;
+        margin: 0 auto;
+        position: relative;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 1.2rem 140px 1.2rem 1.5rem;
+        border: none;
+        border-radius: 50px;
+        font-size: 1.1rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        transition: box-shadow 0.3s;
+    }
+
+    .search-input:focus {
+        outline: none;
+        box-shadow: 0 10px 50px rgba(0,0,0,0.4);
+    }
+
+    .search-btn {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--primary);
+        color: white;
+        border: none;
+        padding: 0.8rem 1.8rem;
+        border-radius: 50px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .search-btn:hover {
+        background: var(--primary-dark);
+        transform: translateY(-50%) scale(1.05);
+    }
+
+    .search-info {
+        background: var(--white);
+        padding: 1.2rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow);
+        display: none;
+        font-size: 1rem;
+    }
+
+    .search-info.active {
+        display: block;
+    }
+
+    .search-info strong {
+        color: var(--dark);
+    }
+
+    #searchQuery {
+        color: var(--primary);
+        font-weight: 600;
+    }
+
+    .meme-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .meme-card {
+        background: var(--white);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        transition: transform 0.3s, box-shadow 0.3s;
+        cursor: pointer;
+    }
+
+    .meme-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .meme-image {
+        width: 100%;
+        height: 280px;
+        object-fit: cover;
+        background: var(--light);
+    }
+
+    .meme-info {
+        padding: 1.2rem;
+    }
+
+    .meme-title {
+        font-weight: 600;
+        margin-bottom: 0.8rem;
+        color: var(--dark);
+        font-size: 1.1rem;
+        line-height: 1.4;
+    }
+
+    .meme-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--gray);
+        font-size: 0.9rem;
+        padding-top: 0.8rem;
+        border-top: 2px solid var(--bg);
+    }
+
+    .meme-meta span:first-child {
+        font-weight: 500;
+        color: var(--dark);
+    }
+
+    .meme-meta span:last-child {
+        font-weight: 600;
+        color: var(--primary);
+    }
+
+    .initial-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--gray);
+    }
+
+    .initial-state h3 {
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+        color: var(--dark);
+    }
+
+    .initial-state p {
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 4rem;
+        color: var(--gray);
+        display: none;
+        font-size: 1.1rem;
+    }
+
+    .loading::after {
+        content: '...';
+        animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+        0%, 20% { content: '.'; }
+        40% { content: '..'; }
+        60%, 100% { content: '...'; }
+    }
+
+    .no-results {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: var(--white);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        display: none;
+    }
+
+    .no-results h3 {
+        color: var(--primary);
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+    }
+
+    .no-results p {
+        color: var(--gray);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-suggestions {
+        margin-top: 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+        justify-content: center;
+    }
+
+    .suggestion-chip {
+        background: var(--white);
+        padding: 0.7rem 1.3rem;
+        border-radius: 25px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 0.95rem;
+        font-weight: 500;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .suggestion-chip:hover {
+        background: var(--primary);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    @media (max-width: 768px) {
+        .search-header h1 {
+            font-size: 2rem;
+        }
+
+        .search-input {
+            padding: 1rem 120px 1rem 1rem;
+            font-size: 1rem;
+        }
+
+        .search-btn {
+            padding: 0.7rem 1.3rem;
+        }
+
+        .meme-grid {
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        .initial-state h3 {
+            font-size: 1.4rem;
+        }
+
+        .initial-state p {
+            font-size: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="search-header">
+    <div class="container">
+        <h1>🔍 Search Memes</h1>
+        <p>Find memes by title, tags, or detected text</p>
+        
+        <div class="search-box">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search for memes..." autofocus>
+            <button class="search-btn" id="searchBtn">Search</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="search-info" id="searchInfo">
+        <strong>Search Results:</strong> <span id="resultCount">0</span> memes found for "<span id="searchQuery"></span>"
+    </div>
+
+    <div class="initial-state" id="initialState">
+        <h3>Start searching for memes</h3>
+        <p>Try searching by title, description, tags, or even text detected in memes</p>
+        
+        <div class="search-suggestions">
+            <span class="suggestion-chip" data-query="funny">🤣 funny</span>
+            <span class="suggestion-chip" data-query="relatable">😅 relatable</span>
+            <span class="suggestion-chip" data-query="trending">🔥 trending</span>
+            <span class="suggestion-chip" data-query="wholesome">💕 wholesome</span>
+            <span class="suggestion-chip" data-query="dank">😎 dank</span>
+            <span class="suggestion-chip" data-query="animal">🐱 animal</span>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Searching</div>
+    <div class="meme-grid" id="memeGrid"></div>
+    <div class="no-results" id="noResults">
+        <h3>No memes found</h3>
+        <p>Try different keywords or explore our gallery</p>
+        <a href="{{ url_for('gallery') }}" class="btn btn-primary">Browse Gallery</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const searchInfo = document.getElementById('searchInfo');
+    const initialState = document.getElementById('initialState');
+    const loading = document.getElementById('loading');
+    const memeGrid = document.getElementById('memeGrid');
+    const noResults = document.getElementById('noResults');
+
+    // Search function
+    async function performSearch(query) {
+        if (!query.trim()) return;
+
+        initialState.style.display = 'none';
+        loading.style.display = 'block';
+        memeGrid.innerHTML = '';
+        noResults.style.display = 'none';
+        searchInfo.classList.remove('active');
+
+        try {
+            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+            const data = await response.json();
+
+            loading.style.display = 'none';
+
+            if (data.success && data.memes.length > 0) {
+                searchInfo.classList.add('active');
+                document.getElementById('resultCount').textContent = data.count;
+                document.getElementById('searchQuery').textContent = query;
+
+                data.memes.forEach(meme => {
+                    const card = createMemeCard(meme);
+                    memeGrid.appendChild(card);
+                });
+            } else {
+                noResults.style.display = 'block';
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            console.error('Error searching:', error);
+            noResults.style.display = 'block';
+            document.querySelector('.no-results h3').textContent = 'Error searching';
+            document.querySelector('.no-results p').textContent = 'Please try again later.';
+        }
+    }
+
+    // Search button click
+    searchBtn.addEventListener('click', () => {
+        performSearch(searchInput.value);
+    });
+
+    // Enter key to search
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            performSearch(searchInput.value);
+        }
+    });
+
+    // Suggestion chips
+    document.querySelectorAll('.suggestion-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const query = chip.dataset.query;
+            searchInput.value = query;
+            performSearch(query);
+        });
+    });
+
+    function createMemeCard(meme) {
+        const card = document.createElement('div');
+        card.className = 'meme-card';
+        card.onclick = () => window.location.href = `/meme/${meme.meme_id}`;
+        
+        card.innerHTML = `
+            <img src="${meme.s3_url}" alt="${escapeHtml(meme.title)}" class="meme-image" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22280%22%3E%3Crect fill=%22%23DFE6E9%22 width=%22300%22 height=%22280%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23636E72%22 font-size=%2216%22%3EImage Unavailable%3C/text%3E%3C/svg%3E'">
+            <div class="meme-info">
+                <div class="meme-title">${escapeHtml(meme.title)}</div>
+                <div class="meme-meta">
+                    <span>by ${escapeHtml(meme.uploader_username)}</span>
+                    <span>❤️ ${formatNumber(meme.likes)}</span>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+
+    function formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Check for URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryParam = urlParams.get('q');
+    if (queryParam) {
+        searchInput.value = queryParam;
+        performSearch(queryParam);
+    }
+</script>
+{% endblock %}

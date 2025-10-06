@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Trending - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .trending-header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #533483 100%);
+        color: var(--white);
+        padding: 4rem 2rem;
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .trending-header h1 {
+        font-size: 2.8rem;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+    }
+
+    .trending-header p {
+        font-size: 1.1rem;
+        opacity: 0.9;
+    }
+
+    .filter-bar {
+        background: var(--white);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        margin-bottom: 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .filter-bar strong {
+        color: var(--dark);
+        font-size: 1rem;
+    }
+
+    .filter-bar select {
+        padding: 0.7rem 1rem;
+        border: 2px solid var(--light);
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        background: var(--white);
+        color: var(--dark);
+        font-weight: 500;
+        transition: border-color 0.3s;
+    }
+
+    .filter-bar select:hover {
+        border-color: var(--primary);
+    }
+
+    .filter-bar select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    .meme-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .meme-card {
+        background: var(--white);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        transition: transform 0.3s, box-shadow 0.3s;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .meme-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .trending-badge {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .meme-image {
+        width: 100%;
+        height: 280px;
+        object-fit: cover;
+        background: var(--light);
+    }
+
+    .meme-info {
+        padding: 1.2rem;
+    }
+
+    .meme-title {
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--dark);
+        font-size: 1.1rem;
+        line-height: 1.4;
+    }
+
+    .meme-meta {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.8rem;
+        margin-bottom: 1rem;
+    }
+
+    .meta-item {
+        text-align: center;
+        padding: 0.6rem;
+        background: var(--bg);
+        border-radius: 8px;
+    }
+
+    .meta-value {
+        font-weight: 700;
+        color: var(--primary);
+        font-size: 1.2rem;
+    }
+
+    .meta-label {
+        font-size: 0.8rem;
+        color: var(--gray);
+        margin-top: 0.2rem;
+    }
+
+    .meme-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 0.8rem;
+        border-top: 2px solid var(--bg);
+        font-size: 0.9rem;
+        color: var(--gray);
+    }
+
+    .meme-footer span:first-child {
+        font-weight: 500;
+        color: var(--dark);
+    }
+
+    .meme-footer span:last-child {
+        background: var(--light);
+        padding: 0.3rem 0.8rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 4rem;
+        color: var(--gray);
+        font-size: 1.1rem;
+    }
+
+    .loading::after {
+        content: '...';
+        animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+        0%, 20% { content: '.'; }
+        40% { content: '..'; }
+        60%, 100% { content: '...'; }
+    }
+
+    .no-trending {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: var(--white);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+    }
+
+    .no-trending h3 {
+        color: var(--primary);
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+    }
+
+    .no-trending p {
+        color: var(--gray);
+        margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+        .trending-header h1 {
+            font-size: 2rem;
+        }
+
+        .meme-grid {
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        .filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .filter-bar > div {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filter-bar select {
+            flex: 1;
+            max-width: 150px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="trending-header">
+    <h1>🔥 Trending Memes</h1>
+    <p>Explore the hottest memes right now</p>
+</div>
+
+<div class="container">
+    <div class="filter-bar">
+        <div>
+            <strong>📊 Showing:</strong> Top trending memes
+        </div>
+        <div>
+            <label for="limitSelect" style="margin-right: 0.5rem;">Display:</label>
+            <select id="limitSelect">
+                <option value="10">Top 10</option>
+                <option value="20" selected>Top 20</option>
+                <option value="50">Top 50</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Loading trending memes</div>
+    <div class="meme-grid" id="memeGrid"></div>
+    <div class="no-trending" id="noTrending" style="display: none;">
+        <h3>No trending memes yet</h3>
+        <p>Be the first to upload and start trending!</p>
+        {% if session.username %}
+        <a href="{{ url_for('upload_page') }}" class="btn btn-primary">Upload Meme</a>
+        {% else %}
+        <a href="{{ url_for('register_page') }}" class="btn btn-primary">Join Now</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentLimit = 20;
+
+    document.getElementById('limitSelect').addEventListener('change', (e) => {
+        currentLimit = e.target.value;
+        loadTrending();
+    });
+
+    async function loadTrending() {
+        const loading = document.getElementById('loading');
+        const grid = document.getElementById('memeGrid');
+        const noTrending = document.getElementById('noTrending');
+        
+        loading.style.display = 'block';
+        grid.innerHTML = '';
+        noTrending.style.display = 'none';
+
+        try {
+            const response = await fetch(`/api/trending?limit=${currentLimit}`);
+            const data = await response.json();
+
+            loading.style.display = 'none';
+
+            if (data.success && data.memes.length > 0) {
+                data.memes.forEach((meme, index) => {
+                    const card = createTrendingCard(meme, index + 1);
+                    grid.appendChild(card);
+                });
+            } else {
+                noTrending.style.display = 'block';
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            console.error('Error loading trending:', error);
+            noTrending.style.display = 'block';
+            document.querySelector('.no-trending h3').textContent = 'Error loading memes';
+            document.querySelector('.no-trending p').textContent = 'Please try again later.';
+        }
+    }
+
+    function createTrendingCard(meme, rank) {
+        const card = document.createElement('div');
+        card.className = 'meme-card';
+        card.onclick = () => window.location.href = `/meme/${meme.meme_id}`;
+        
+        card.innerHTML = `
+            <div class="trending-badge">
+                🔥 #${rank}
+            </div>
+            <img src="${meme.s3_url}" alt="${meme.title}" class="meme-image" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22280%22%3E%3Crect fill=%22%23DFE6E9%22 width=%22300%22 height=%22280%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23636E72%22 font-size=%2216%22%3EImage Unavailable%3C/text%3E%3C/svg%3E'">
+            <div class="meme-info">
+                <div class="meme-title">${escapeHtml(meme.title)}</div>
+                <div class="meme-meta">
+                    <div class="meta-item">
+                        <div class="meta-value">${formatNumber(meme.likes)}</div>
+                        <div class="meta-label">Likes</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-value">${formatNumber(meme.views)}</div>
+                        <div class="meta-label">Views</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-value">${formatNumber(meme.downloads)}</div>
+                        <div class="meta-label">Downloads</div>
+                    </div>
+                </div>
+                <div class="meme-footer">
+                    <span>by ${escapeHtml(meme.uploader_username)}</span>
+                    <span>${escapeHtml(meme.category)}</span>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+
+    function formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Load trending on page load
+    loadTrending();
+</script>
+{% endblock %}

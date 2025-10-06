@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Meme - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .upload-header {
+        background: linear-gradient(135deg, var(--secondary) 0%, #55EFC4 100%);
+        color: var(--white);
+        padding: 3rem 2rem;
+        text-align: center;
+        border-radius: 0 0 30px 30px;
+        margin-bottom: 2rem;
+    }
+
+    .upload-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .upload-card {
+        background: var(--white);
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .upload-zone {
+        border: 3px dashed var(--light);
+        border-radius: 15px;
+        padding: 3rem 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-bottom: 2rem;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: var(--primary);
+        background: rgba(108, 92, 231, 0.05);
+    }
+
+    .upload-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .preview-container {
+        display: none;
+        margin-bottom: 2rem;
+    }
+
+    .preview-image {
+        max-width: 100%;
+        max-height: 400px;
+        border-radius: 15px;
+        margin: 0 auto;
+        display: block;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: var(--dark);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.8rem;
+        border: 2px solid var(--light);
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    textarea.form-control {
+        resize: vertical;
+        min-height: 100px;
+    }
+
+    .btn-group {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .btn-group .btn {
+        flex: 1;
+    }
+
+    .help-text {
+        font-size: 0.9rem;
+        color: var(--gray);
+        margin-top: 0.3rem;
+    }
+
+    .message {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        display: none;
+    }
+
+    .message.error {
+        background: #FFE5E5;
+        color: #D63031;
+    }
+
+    .message.success {
+        background: #E5F9F4;
+        color: #00B894;
+    }
+
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .loading-content {
+        background: var(--white);
+        padding: 2rem;
+        border-radius: 15px;
+        text-align: center;
+    }
+
+    .spinner {
+        border: 4px solid var(--light);
+        border-top: 4px solid var(--primary);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upload-header">
+    <h1>📤 Upload Your Meme</h1>
+    <p>Share your creativity with the world</p>
+</div>
+
+<div class="upload-container">
+    <div class="upload-card">
+        <div class="message" id="message"></div>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">🖼️</div>
+                <h3>Drop your meme here or click to browse</h3>
+                <p class="help-text">Supports PNG, JPG, GIF, WebP (Max 16MB)</p>
+                <input type="file" id="imageInput" name="image" accept=".png,.jpg,.jpeg,.gif,.webp" style="display: none;" required>
+            </div>
+
+            <div class="preview-container" id="previewContainer">
+                <img id="previewImage" class="preview-image" alt="Preview">
+            </div>
+
+            <div class="form-group">
+                <label for="title">Title *</label>
+                <input type="text" id="title" name="title" class="form-control" placeholder="Give your meme a catchy title" required>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" class="form-control" placeholder="Tell us about your meme..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="category">Category *</label>
+                <select id="category" name="category" class="form-control" required>
+                    <option value="Auto">🤖 Auto-Detect (AI Powered)</option>
+                    {% for category in categories %}
+                    <option value="{{ category }}">{{ category }}</option>
+                    {% endfor %}
+                </select>
+                <span class="help-text">Choose Auto to let AI categorize your meme</span>
+            </div>
+
+            <div class="form-group">
+                <label for="tags">Tags</label>
+                <input type="text" id="tags" name="tags" class="form-control" placeholder="funny, relatable, trending (comma separated)">
+                <span class="help-text">Add tags to help others find your meme</span>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
+                <button type="submit" class="btn btn-primary">🚀 Upload Meme</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <h3>Uploading your meme...</h3>
+        <p>Please wait while we process your upload</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const uploadZone = document.getElementById('uploadZone');
+    const imageInput = document.getElementById('imageInput');
+    const previewContainer = document.getElementById('previewContainer');
+    const previewImage = document.getElementById('previewImage');
+    const uploadForm = document.getElementById('uploadForm');
+    const messageDiv = document.getElementById('message');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    // Click to upload
+    uploadZone.addEventListener('click', () => imageInput.click());
+
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            imageInput.files = files;
+            handleFileSelect(files[0]);
+        }
+    });
+
+    // File input change
+    imageInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+
+    function handleFileSelect(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            previewImage.src = e.target.result;
+            previewContainer.style.display = 'block';
+            uploadZone.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        messageDiv.style.display = 'none';
+        loadingOverlay.style.display = 'flex';
+
+        const formData = new FormData(uploadForm);
+
+        try {
+            const response = await fetch('/api/upload-meme', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            loadingOverlay.style.display = 'none';
+
+            if (data.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = 'Meme uploaded successfully! Redirecting...';
+                messageDiv.style.display = 'block';
+                
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1500);
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = data.error;
+                messageDiv.style.display = 'block';
+            }
+        } catch (error) {
+            loadingOverlay.style.display = 'none';
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Upload failed. Please try again.';
+            messageDiv.style.display = 'block';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category }} - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .category-header {
+        background: linear-gradient(135deg, var(--secondary) 0%, #55EFC4 100%);
+        color: var(--white);
+        padding: 3rem 2rem;
+        text-align: center;
+        border-radius: 0 0 30px 30px;
+        margin-bottom: 2rem;
+    }
+
+    .category-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .category-info {
+        background: var(--white);
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: var(--shadow);
+        margin-bottom: 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .meme-count {
+        font-size: 1.2rem;
+        color: var(--dark);
+    }
+
+    .meme-count strong {
+        color: var(--primary);
+        font-size: 1.5rem;
+    }
+
+    .sort-select {
+        padding: 0.7rem;
+        border: 2px solid var(--light);
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+    }
+
+    .meme-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .meme-card {
+        background: var(--white);
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        transition: transform 0.3s, box-shadow 0.3s;
+        cursor: pointer;
+    }
+
+    .meme-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .meme-image {
+        width: 100%;
+        height: 250px;
+        object-fit: cover;
+        background: var(--light);
+    }
+
+    .meme-info {
+        padding: 1rem;
+    }
+
+    .meme-title {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--dark);
+        font-size: 1.1rem;
+    }
+
+    .meme-meta {
+        display: flex;
+        justify-content: space-between;
+        color: var(--gray);
+        font-size: 0.9rem;
+    }
+
+    .meme-stats {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: var(--gray);
+    }
+
+    .no-memes {
+        text-align: center;
+        padding: 3rem;
+        background: var(--white);
+        border-radius: 15px;
+        box-shadow: var(--shadow);
+    }
+
+    .no-memes h3 {
+        color: var(--primary);
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="category-header">
+    <div class="container">
+        <h1>{{ category }} Memes</h1>
+        <p>Explore memes in the {{ category }} category</p>
+    </div>
+</div>
+
+<div class="container">
+    <div class="category-info">
+        <div class="meme-count">
+            <strong id="memeCount">0</strong> memes in this category
+        </div>
+        <div>
+            <label for="sortBy" style="margin-right: 0.5rem; font-weight: 600;">Sort by:</label>
+            <select id="sortBy" class="sort-select">
+                <option value="created_at">Newest First</option>
+                <option value="likes">Most Liked</option>
+                <option value="views">Most Viewed</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Loading memes...</div>
+    <div class="meme-grid" id="memeGrid"></div>
+    <div class="no-memes" id="noMemes" style="display: none;">
+        <h3>No memes in this category yet</h3>
+        <p>Be the first to upload a {{ category }} meme!</p>
+        {% if session.username %}
+        <a href="{{ url_for('upload_page') }}" class="btn btn-primary" style="margin-top: 1rem;">Upload Meme</a>
+        {% else %}
+        <a href="{{ url_for('register_page') }}" class="btn btn-primary" style="margin-top: 1rem;">Join Now</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const category = '{{ category }}';
+    let currentSort = 'created_at';
+
+    document.getElementById('sortBy').addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        loadMemes();
+    });
+
+    async function loadMemes() {
+        const loading = document.getElementById('loading');
+        const grid = document.getElementById('memeGrid');
+        const noMemes = document.getElementById('noMemes');
+        
+        loading.style.display = 'block';
+        grid.innerHTML = '';
+        noMemes.style.display = 'none';
+
+        try {
+            const response = await fetch(`/api/category/${encodeURIComponent(category)}/memes?limit=50`);
+            const data = await response.json();
+
+            loading.style.display = 'none';
+
+            if (data.success && data.memes.length > 0) {
+                document.getElementById('memeCount').textContent = data.count;
+                
+                // Sort memes
+                let sortedMemes = [...data.memes];
+                if (currentSort === 'likes' || currentSort === 'views') {
+                    sortedMemes.sort((a, b) => b[currentSort] - a[currentSort]);
+                } else {
+                    sortedMemes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                }
+
+                sortedMemes.forEach(meme => {
+                    const card = createMemeCard(meme);
+                    grid.appendChild(card);
+                });
+            } else {
+                document.getElementById('memeCount').textContent = '0';
+                noMemes.style.display = 'block';
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            console.error('Error loading memes:', error);
+        }
+    }
+
+    function createMemeCard(meme) {
+        const card = document.createElement('div');
+        card.className = 'meme-card';
+        card.onclick = () => window.location.href = `/meme/${meme.meme_id}`;
+        
+        card.innerHTML = `
+            <img src="${meme.s3_url}" alt="${meme.title}" class="meme-image" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22250%22%3E%3Crect fill=%22%23DFE6E9%22 width=%22280%22 height=%22250%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23636E72%22%3EImage%3C/text%3E%3C/svg%3E'">
+            <div class="meme-info">
+                <div class="meme-title">${meme.title}</div>
+                <div class="meme-meta">
+                    <span>by ${meme.uploader_username}</span>
+                    <div class="meme-stats">
+                        <span>❤️ ${meme.likes}</span>
+                        <span>👁️ ${meme.views}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+
+    // Load memes on page load
+    loadMemes();
+</script>
+{% endblock %}

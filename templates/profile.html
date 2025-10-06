@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .profile-header {
+        background: linear-gradient(135deg, var(--primary) 0%, #A29BFE 100%);
+        color: var(--white);
+        padding: 3rem 2rem;
+        text-align: center;
+        border-radius: 0 0 30px 30px;
+        margin-bottom: 2rem;
+    }
+
+    .profile-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .profile-card {
+        background: var(--white);
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: var(--shadow-lg);
+        margin-bottom: 2rem;
+    }
+
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+        background: linear-gradient(135deg, var(--primary), #A29BFE);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        margin: 0 auto 1.5rem;
+        color: white;
+    }
+
+    .profile-name {
+        text-align: center;
+        font-size: 2rem;
+        color: var(--dark);
+        margin-bottom: 0.5rem;
+    }
+
+    .profile-email {
+        text-align: center;
+        color: var(--gray);
+        margin-bottom: 2rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: var(--dark);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.8rem;
+        border: 2px solid var(--light);
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    textarea.form-control {
+        resize: vertical;
+        min-height: 100px;
+    }
+
+    .btn-group {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .message {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        display: none;
+    }
+
+    .message.error {
+        background: #FFE5E5;
+        color: #D63031;
+    }
+
+    .message.success {
+        background: #E5F9F4;
+        color: #00B894;
+    }
+
+    .logout-section {
+        text-align: center;
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 2px solid var(--light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-header">
+    <h1>👤 Your Profile</h1>
+    <p>Manage your account information</p>
+</div>
+
+<div class="profile-container">
+    <div class="profile-card">
+        <div class="profile-avatar">
+            <span id="avatarInitial">{{ username[0].upper() }}</span>
+        </div>
+        <h2 class="profile-name">{{ username }}</h2>
+        <p class="profile-email" id="profileEmail">Loading...</p>
+
+        <div class="message" id="message"></div>
+
+        <form id="profileForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="bio">Bio</label>
+                <textarea id="bio" name="bio" class="form-control" placeholder="Tell us about yourself..."></textarea>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
+                <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+            </div>
+        </form>
+
+        <div class="logout-section">
+            <p style="color: var(--gray); margin-bottom: 1rem;">Need to sign out?</p>
+            <button onclick="logout()" class="btn btn-secondary">Logout</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const messageDiv = document.getElementById('message');
+
+    async function loadProfile() {
+        try {
+            const response = await fetch('/api/user/stats');
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('email').value = data.stats.email;
+                document.getElementById('bio').value = data.stats.bio || '';
+                document.getElementById('profileEmail').textContent = data.stats.email;
+            }
+        } catch (error) {
+            console.error('Error loading profile:', error);
+        }
+    }
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        messageDiv.style.display = 'none';
+
+        const formData = {
+            email: document.getElementById('email').value,
+            bio: document.getElementById('bio').value
+        };
+
+        try {
+            const response = await fetch('/api/user/profile', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = 'Profile updated successfully!';
+                messageDiv.style.display = 'block';
+                document.getElementById('profileEmail').textContent = formData.email;
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = data.error;
+                messageDiv.style.display = 'block';
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Failed to update profile';
+            messageDiv.style.display = 'block';
+        }
+    });
+
+    async function logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '{{ url_for("home") }}';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        }
+    }
+
+    // Load profile on page load
+    loadProfile();
+</script>
+{% endblock %}

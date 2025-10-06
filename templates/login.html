@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Meme Museum{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .auth-container {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .auth-card {
+        background: var(--white);
+        padding: 3rem;
+        border-radius: 20px;
+        box-shadow: var(--shadow-lg);
+        max-width: 450px;
+        width: 100%;
+    }
+
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .auth-header h1 {
+        color: var(--primary);
+        margin-bottom: 0.5rem;
+    }
+
+    .auth-header p {
+        color: var(--gray);
+        font-size: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: var(--dark);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.8rem;
+        border: 2px solid var(--light);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    .form-options {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+    }
+
+    .remember-me {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--dark);
+    }
+
+    .remember-me input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .forgot-password {
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .forgot-password:hover {
+        text-decoration: underline;
+    }
+
+    .btn-block {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.1rem;
+    }
+
+    .auth-footer {
+        text-align: center;
+        margin-top: 1.5rem;
+        color: var(--gray);
+    }
+
+    .auth-footer a {
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .auth-footer a:hover {
+        text-decoration: underline;
+    }
+
+    .error-message, .success-message {
+        padding: 0.8rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        display: none;
+    }
+
+    .error-message {
+        background: #FFE5E5;
+        color: #D63031;
+        border: 1px solid #D63031;
+    }
+
+    .success-message {
+        background: #E5F9F4;
+        color: #00B894;
+        border: 1px solid #00B894;
+    }
+
+    .divider {
+        text-align: center;
+        margin: 1.5rem 0;
+        position: relative;
+    }
+
+    .divider::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: var(--light);
+    }
+
+    .divider span {
+        background: var(--white);
+        padding: 0 1rem;
+        position: relative;
+        color: var(--gray);
+        font-size: 0.9rem;
+    }
+
+    .login-benefits {
+        background: #F8F9FA;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1.5rem;
+    }
+
+    .login-benefits h3 {
+        font-size: 0.9rem;
+        color: var(--dark);
+        margin-bottom: 0.8rem;
+    }
+
+    .login-benefits ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .login-benefits li {
+        padding: 0.3rem 0;
+        color: var(--gray);
+        font-size: 0.85rem;
+    }
+
+    .login-benefits li::before {
+        content: "✓ ";
+        color: var(--primary);
+        font-weight: bold;
+        margin-right: 0.5rem;
+    }
+
+    /* Loading state */
+    .btn-loading {
+        position: relative;
+        pointer-events: none;
+        opacity: 0.7;
+    }
+
+    .btn-loading::after {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        top: 50%;
+        right: 1rem;
+        margin-top: -8px;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spinner 0.6s linear infinite;
+    }
+
+    @keyframes spinner {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <h1>Welcome Back!</h1>
+            <p>Login to access your meme collection</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username *</label>
+                <input type="text" id="username" name="username" class="form-control" required autocomplete="username">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password *</label>
+                <input type="password" id="password" name="password" class="form-control" required autocomplete="current-password">
+            </div>
+
+            <div class="form-options">
+                <label class="remember-me">
+                    <input type="checkbox" id="remember" name="remember">
+                    <span>Remember me</span>
+                </label>
+                <a href="#" class="forgot-password">Forgot password?</a>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Login</button>
+        </form>
+
+        <div class="divider">
+            <span>OR</span>
+        </div>
+
+        <div class="auth-footer">
+            <p>Don't have an account? <a href="{{ url_for('register_page') }}">Create one now</a></p>
+        </div>
+
+        <div class="login-benefits">
+            <h3>Why login to Meme Museum?</h3>
+            <ul>
+                <li>Upload and share your memes</li>
+                <li>Like and save your favorites</li>
+                <li>Track your meme stats</li>
+                <li>Join the community</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Handle flash messages on page load
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const message = urlParams.get('message');
+        const type = urlParams.get('type');
+        
+        if (message) {
+            showMessage(message, type === 'error' ? 'error' : 'success');
+        }
+    });
+
+    // Show message helper
+    function showMessage(message, type) {
+        const errorDiv = document.getElementById('errorMessage');
+        const successDiv = document.getElementById('successMessage');
+        
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+        
+        if (type === 'error') {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        } else {
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+        }
+        
+        // Auto-hide success messages after 5 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 5000);
+        }
+    }
+
+    // Handle login form submission
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const errorDiv = document.getElementById('errorMessage');
+        const successDiv = document.getElementById('successMessage');
+        const loginBtn = document.getElementById('loginBtn');
+        
+        // Hide previous messages
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+        
+        // Get form data
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        
+        // Basic validation
+        if (!username || !password) {
+            showMessage('Please enter both username and password', 'error');
+            return;
+        }
+        
+        // Show loading state
+        loginBtn.classList.add('btn-loading');
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Logging in...';
+        
+        const formData = {
+            username: username,
+            password: password
+        };
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const data = await response.json();
+
+            // Remove loading state
+            loginBtn.classList.remove('btn-loading');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
+
+            if (data.success) {
+                showMessage(data.message || 'Login successful!', 'success');
+                
+                // Store username in localStorage if remember me is checked
+                const rememberMe = document.getElementById('remember').checked;
+                if (rememberMe) {
+                    localStorage.setItem('rememberedUsername', username);
+                } else {
+                    localStorage.removeItem('rememberedUsername');
+                }
+                
+                // Redirect after short delay
+                setTimeout(() => {
+                    window.location.href = data.redirect || '/dashboard';
+                }, 1000);
+            } else {
+                showMessage(data.error || 'Login failed. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            
+            // Remove loading state
+            loginBtn.classList.remove('btn-loading');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
+            
+            showMessage('An error occurred. Please try again.', 'error');
+        }
+    });
+
+    // Auto-fill username if remembered
+    window.addEventListener('DOMContentLoaded', () => {
+        const rememberedUsername = localStorage.getItem('rememberedUsername');
+        if (rememberedUsername) {
+            document.getElementById('username').value = rememberedUsername;
+            document.getElementById('remember').checked = true;
+            document.getElementById('password').focus();
+        }
+    });
+
+    // Handle forgot password click
+    document.querySelector('.forgot-password').addEventListener('click', (e) => {
+        e.preventDefault();
+        alert('Password reset functionality coming soon! Please contact support for assistance.');
+    });
+
+    // Enter key support
+    document.getElementById('password').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+        }
+    });
+</script>
+{% endblock %}
