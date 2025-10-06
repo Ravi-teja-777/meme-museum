@@ -1,9 +1,11 @@
-from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash
+from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
 from decimal import Decimal
+from botocore.exceptions import ClientError
+from io import BytesIO
 import boto3, uuid, json, re, os
 
 app = Flask(__name__)
@@ -12,13 +14,14 @@ app.config.update(
     MAX_CONTENT_LENGTH=16*1024*1024
 )
 
-# AWS Setup - Uses IAM role credentials automatically (no hardcoded keys needed!)
+# AWS Setup
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'meme-museum-storage')
 LAMBDA_FUNC = os.environ.get('LAMBDA_FUNCTION_NAME', 'meme-auto-categorizer')
 
-# Initialize AWS clients - They automatically use IAM role credentials from EC2
-s3 = boto3.client('s3', region_name=AWS_REGION)
+# Initialize AWS clients with signature version for presigned URLs
+from botocore.client import Config
+s3 = boto3.client('s3', region_name=AWS_REGION, config=Config(signature_version='s3v4'))
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 rekognition = boto3.client('rekognition', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
@@ -40,6 +43,19 @@ CATEGORIES = ['Funny','Wholesome','Dank','Relatable','Cringe','Cursed','Trending
 # Helper Functions
 allowed_file = lambda f: '.' in f and f.rsplit('.',1)[1].lower() in ALLOWED_EXT
 decimal_default = lambda obj: float(obj) if isinstance(obj, Decimal) else TypeError
+
+def generate_presigned_url(s3_key, expiration=3600):
+    """Generate presigned URL for S3 object"""
+    try:
+        url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': s3_key},
+            ExpiresIn=expiration
+        )
+        return url
+    except Exception as e:
+        print(f"Error generating presigned URL: {e}")
+        return None
 
 def validate_email(email):
     """Validate email format"""
@@ -64,7 +80,6 @@ def login_required(f):
 def log_activity(user_id, username, meme_id, action):
     """Log user activity with better error handling"""
     try:
-        # Create composite key for interactions
         interaction_key = f"{user_id}#{meme_id}#{action}"
         interactions_table.put_item(Item={
             'interaction_key': interaction_key,
@@ -90,7 +105,6 @@ def check_user_liked(user_id, meme_id):
         )
         return len(response.get('Items', [])) > 0
     except:
-        # Fallback: scan for interaction
         try:
             response = interactions_table.scan(
                 FilterExpression='user_id = :u AND meme_id = :m AND #a = :action',
@@ -146,7 +160,6 @@ def check_aws_resources():
     
     resources_ok = True
     
-    # Check S3 bucket
     try:
         s3.head_bucket(Bucket=BUCKET_NAME)
         print(f"✓ S3 bucket '{BUCKET_NAME}' exists")
@@ -155,7 +168,6 @@ def check_aws_resources():
         print(f"  Error: {str(e)}")
         resources_ok = False
     
-    # Check DynamoDB tables
     tables_to_check = {
         MEMES_TABLE: 'Memes table',
         USERS_TABLE: 'Users table',
@@ -173,34 +185,25 @@ def check_aws_resources():
             print(f"  Error: {str(e)}")
             resources_ok = False
     
-    # Check Lambda function (optional)
     try:
         lambda_client.get_function(FunctionName=LAMBDA_FUNC)
         print(f"✓ Lambda function '{LAMBDA_FUNC}' exists")
     except:
         print(f"⚠ Lambda function '{LAMBDA_FUNC}' not found (optional)")
-        print(f"  Auto-categorization will use fallback")
     
-    # Check Rekognition (just test access)
     try:
         rekognition.describe_projects(MaxResults=1)
         print(f"✓ AWS Rekognition access confirmed")
     except Exception as e:
-        print(f"⚠ AWS Rekognition access issue")
-        print(f"  Error: {str(e)}")
+        print(f"⚠ AWS Rekognition access issue: {str(e)}")
     
     print("="*60)
     
     if not resources_ok:
         print("\n⚠ WARNING: Some required AWS resources are missing!")
-        print("Please ensure:")
-        print("\n1. EC2 instance has an IAM role attached")
-        print("2. IAM role has required permissions (S3, DynamoDB, Rekognition, Lambda)")
-        print("3. All AWS resources are created in the correct region")
-        print("="*60 + "\n")
     else:
         print("\n✓ All required AWS resources are available!")
-        print("="*60 + "\n")
+    print("="*60 + "\n")
     
     return resources_ok
 
@@ -264,7 +267,7 @@ def search_page(): return render_template('search.html')
 @app.route('/trending') 
 def trending_page(): return render_template('trending.html')
 
-# Auth API
+# Auth API (keeping existing auth endpoints unchanged)
 @app.route('/api/register', methods=['POST'])
 def api_register():
     try:
@@ -414,7 +417,7 @@ def api_change_password():
         print(f"Password change error: {str(e)}")
         return jsonify({'error': 'Failed to change password'}), 500
 
-# Meme API
+# Meme API - MODIFIED FOR PRESIGNED URLS
 @app.route('/api/upload-meme', methods=['POST'])
 @login_required
 def api_upload_meme():
@@ -436,8 +439,14 @@ def api_upload_meme():
         meme_id = str(uuid.uuid4())
         filename = f"memes/{session['user_id']}/{meme_id}/{secure_filename(file.filename)}"
         
-        s3.put_object(Bucket=BUCKET_NAME, Key=filename, Body=img_bytes, ContentType=file.content_type,
-                     Metadata={'meme-id': meme_id, 'uploader': session['username']})
+        # Upload to S3 with public-read ACL (optional, depends on bucket policy)
+        s3.put_object(
+            Bucket=BUCKET_NAME, 
+            Key=filename, 
+            Body=img_bytes, 
+            ContentType=file.content_type,
+            Metadata={'meme-id': meme_id, 'uploader': session['username']}
+        )
         
         category = request.form.get('category', 'Funny')
         if category == 'Auto':
@@ -445,15 +454,24 @@ def api_upload_meme():
         
         tags = [t.strip() for t in request.form.get('tags', '').split(',') if t.strip()]
         
+        # Store S3 key, NOT the direct URL
         memes_table.put_item(Item={
-            'meme_id': meme_id, 'title': title, 'description': request.form.get('description', '').strip(),
-            'category': category, 'tags': tags, 'labels': labels, 'detected_text': text,
-            's3_key': filename, 's3_url': f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{filename}",
-            'uploader_id': session['user_id'], 'uploader_username': session['username'],
-            'created_at': datetime.now().isoformat(), 'likes': 0, 'views': 0, 'downloads': 0
+            'meme_id': meme_id, 
+            'title': title, 
+            'description': request.form.get('description', '').strip(),
+            'category': category, 
+            'tags': tags, 
+            'labels': labels, 
+            'detected_text': text,
+            's3_key': filename,
+            'uploader_id': session['user_id'], 
+            'uploader_username': session['username'],
+            'created_at': datetime.now().isoformat(), 
+            'likes': 0, 
+            'views': 0, 
+            'downloads': 0
         })
         
-        # Safely increment counters
         try:
             users_table.update_item(
                 Key={'username': session['username']},
@@ -492,11 +510,13 @@ def api_get_memes():
         memes = resp.get('Items', [])
         sort_by = request.args.get('sort_by', 'created_at')
         
-        # Ensure numeric fields exist for sorting
         for meme in memes:
             meme.setdefault('likes', 0)
             meme.setdefault('views', 0)
             meme.setdefault('downloads', 0)
+            # Generate presigned URL for each meme
+            if 's3_key' in meme:
+                meme['s3_url'] = generate_presigned_url(meme['s3_key'])
         
         memes.sort(key=lambda x: x.get(sort_by if sort_by in ['likes','views'] else 'created_at', 0), reverse=True)
         
@@ -512,7 +532,12 @@ def api_get_meme(meme_id):
         if 'Item' not in resp:
             return jsonify({'error': 'Not found'}), 404
         
-        # Safely increment views
+        meme = resp['Item']
+        
+        # Generate presigned URL
+        if 's3_key' in meme:
+            meme['s3_url'] = generate_presigned_url(meme['s3_key'])
+        
         try:
             memes_table.update_item(
                 Key={'meme_id': meme_id}, 
@@ -520,22 +545,18 @@ def api_get_meme(meme_id):
                 ExpressionAttributeNames={'#v': 'views'},
                 ExpressionAttributeValues={':zero': 0, ':inc': 1}
             )
+            # Update local copy
+            meme['views'] = meme.get('views', 0) + 1
         except Exception as view_error:
             print(f"View count update error: {view_error}")
         
         if 'username' in session:
             log_activity(session['user_id'], session['username'], meme_id, 'view')
         
-        # Fetch the updated item
-        resp = memes_table.get_item(Key={'meme_id': meme_id})
-        meme = resp['Item']
-        
-        # Ensure numeric fields exist
         meme.setdefault('views', 0)
         meme.setdefault('likes', 0)
         meme.setdefault('downloads', 0)
         
-        # Check if current user liked this meme
         has_liked = False
         if 'username' in session:
             has_liked = check_user_liked(session['user_id'], meme_id)
@@ -551,18 +572,15 @@ def api_get_meme(meme_id):
 @login_required
 def api_like_meme(meme_id):
     try:
-        # Check if user already liked this meme
         if check_user_liked(session['user_id'], meme_id):
             return jsonify({'error': 'You already liked this meme', 'already_liked': True}), 400
         
-        # Increment like count
         memes_table.update_item(
             Key={'meme_id': meme_id}, 
             UpdateExpression='SET likes = if_not_exists(likes, :zero) + :inc',
             ExpressionAttributeValues={':zero': 0, ':inc': 1}
         )
         
-        # Log the like action
         log_activity(session['user_id'], session['username'], meme_id, 'like')
         
         return jsonify({'success': True, 'message': 'Meme liked!'}), 200
@@ -574,11 +592,9 @@ def api_like_meme(meme_id):
 @login_required
 def api_unlike_meme(meme_id):
     try:
-        # Check if user actually liked this meme
         if not check_user_liked(session['user_id'], meme_id):
             return jsonify({'error': 'You have not liked this meme'}), 400
         
-        # Decrement like count (but don't go below 0)
         try:
             memes_table.update_item(
                 Key={'meme_id': meme_id},
@@ -587,15 +603,12 @@ def api_unlike_meme(meme_id):
                 ExpressionAttributeValues={':zero': 0, ':dec': 1}
             )
         except:
-            # If condition fails (likes already 0), just continue
             pass
         
-        # Remove the like interaction
         try:
             interaction_key = f"{session['user_id']}#{meme_id}#like"
             interactions_table.delete_item(Key={'interaction_key': interaction_key})
         except:
-            # Fallback: scan and delete
             try:
                 response = interactions_table.scan(
                     FilterExpression='user_id = :u AND meme_id = :m AND #a = :action',
@@ -618,17 +631,62 @@ def api_unlike_meme(meme_id):
         print(f"Error in api_unlike_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/meme/<meme_id>/download', methods=['POST'])
+# FIXED DOWNLOAD ENDPOINT
+@app.route('/api/meme/<meme_id>/download', methods=['POST', 'GET'])
 def api_download_meme(meme_id):
     try:
-        memes_table.update_item(
-            Key={'meme_id': meme_id}, 
-            UpdateExpression='SET downloads = if_not_exists(downloads, :zero) + :inc',
-            ExpressionAttributeValues={':zero': 0, ':inc': 1}
-        )
+        # Get meme from database
+        resp = memes_table.get_item(Key={'meme_id': meme_id})
+        if 'Item' not in resp:
+            return jsonify({'error': 'Meme not found'}), 404
+        
+        meme = resp['Item']
+        s3_key = meme.get('s3_key')
+        
+        if not s3_key:
+            return jsonify({'error': 'S3 key not found'}), 404
+        
+        # Increment download counter
+        try:
+            memes_table.update_item(
+                Key={'meme_id': meme_id}, 
+                UpdateExpression='SET downloads = if_not_exists(downloads, :zero) + :inc',
+                ExpressionAttributeValues={':zero': 0, ':inc': 1}
+            )
+        except Exception as e:
+            print(f"Download count update error: {e}")
+        
+        # Log activity
         if 'username' in session:
             log_activity(session['user_id'], session['username'], meme_id, 'download')
-        return jsonify({'success': True}), 200
+        
+        # Option 1: Return presigned URL (recommended - less server load)
+        download_url = generate_presigned_url(s3_key, expiration=300)  # 5 minutes
+        if not download_url:
+            return jsonify({'error': 'Failed to generate download URL'}), 500
+        
+        return jsonify({
+            'success': True, 
+            'download_url': download_url,
+            'filename': meme.get('title', 'meme') + '.jpg'
+        }), 200
+        
+        # Option 2: Stream file directly (uncomment if you prefer this method)
+        # try:
+        #     obj = s3.get_object(Bucket=BUCKET_NAME, Key=s3_key)
+        #     file_stream = BytesIO(obj['Body'].read())
+        #     filename = f"{meme.get('title', 'meme')}_{meme_id}.{s3_key.split('.')[-1]}"
+        #     
+        #     return send_file(
+        #         file_stream,
+        #         mimetype=obj['ContentType'],
+        #         as_attachment=True,
+        #         download_name=filename
+        #     )
+        # except ClientError as e:
+        #     print(f"S3 download error: {e}")
+        #     return jsonify({'error': 'Failed to download from S3'}), 500
+        
     except Exception as e:
         print(f"Error in api_download_meme: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -645,16 +703,13 @@ def api_delete_meme(meme_id):
         if meme['uploader_id'] != session['user_id']:
             return jsonify({'error': 'Unauthorized'}), 403
         
-        # Delete from S3
         try:
             s3.delete_object(Bucket=BUCKET_NAME, Key=meme['s3_key'])
         except Exception as s3_error:
             print(f"S3 deletion error: {s3_error}")
         
-        # Delete from DynamoDB
         memes_table.delete_item(Key={'meme_id': meme_id})
         
-        # Update user stats - safely decrement
         try:
             users_table.update_item(
                 Key={'username': session['username']}, 
@@ -665,7 +720,6 @@ def api_delete_meme(meme_id):
         except Exception as user_error:
             print(f"User stats update error: {user_error}")
         
-        # Update category stats - safely decrement
         try:
             categories_table.update_item(
                 Key={'category_name': meme['category']}, 
@@ -691,9 +745,16 @@ def api_search_memes():
             return jsonify({'error': 'Query required'}), 400
         
         resp = memes_table.scan()
-        matches = [m for m in resp.get('Items', []) if q in m.get('title','').lower() or 
-                  q in m.get('description','').lower() or q in ' '.join(m.get('tags',[])).lower() or 
-                  q in m.get('detected_text','').lower()]
+        matches = []
+        for m in resp.get('Items', []):
+            if q in m.get('title','').lower() or \
+               q in m.get('description','').lower() or \
+               q in ' '.join(m.get('tags',[])).lower() or \
+               q in m.get('detected_text','').lower():
+                # Generate presigned URL
+                if 's3_key' in m:
+                    m['s3_url'] = generate_presigned_url(m['s3_key'])
+                matches.append(m)
         
         return jsonify({'success': True, 'query': q, 'count': len(matches), 
                        'memes': json.loads(json.dumps(matches, default=decimal_default))}), 200
@@ -708,13 +769,14 @@ def api_trending_memes():
         resp = memes_table.scan(Limit=100)
         memes = resp.get('Items', [])
         
-        # Ensure all memes have default values
         for meme in memes:
             meme.setdefault('likes', 0)
             meme.setdefault('views', 0)
             meme.setdefault('downloads', 0)
+            # Generate presigned URL
+            if 's3_key' in meme:
+                meme['s3_url'] = generate_presigned_url(meme['s3_key'])
         
-        # Sort by engagement score (likes + views/10)
         memes.sort(key=lambda x: x.get('likes', 0) + (x.get('views', 0) / 10), reverse=True)
         
         return jsonify({'success': True, 'count': len(memes[:limit]), 
@@ -730,6 +792,12 @@ def api_user_memes():
     try:
         resp = memes_table.scan(FilterExpression='uploader_id = :u', ExpressionAttributeValues={':u': session['user_id']})
         memes = resp.get('Items', [])
+        
+        # Generate presigned URLs
+        for meme in memes:
+            if 's3_key' in meme:
+                meme['s3_url'] = generate_presigned_url(meme['s3_key'])
+        
         memes.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         return jsonify({'success': True, 'count': len(memes), 'memes': json.loads(json.dumps(memes, default=decimal_default))}), 200
     except Exception as e:
@@ -755,7 +823,6 @@ def api_user_stats():
             'recent_activity': []
         }
         
-        # Get recent activity
         try:
             activity = interactions_table.scan(
                 FilterExpression='user_id = :u', 
@@ -798,7 +865,6 @@ def api_update_profile():
             ExpressionAttributeValues=vals
         )
         
-        # Update session if email changed
         if 'email' in data:
             session['email'] = data['email'].strip().lower()
         
@@ -814,7 +880,6 @@ def api_get_categories():
         resp = categories_table.scan()
         cats = resp.get('Items', [])
         
-        # Ensure all categories have default meme_count
         for cat in cats:
             cat.setdefault('meme_count', 0)
         
@@ -830,6 +895,12 @@ def api_get_category_memes(category_name):
         limit = int(request.args.get('limit', 50))
         resp = memes_table.scan(FilterExpression='category = :c', ExpressionAttributeValues={':c': category_name}, Limit=limit)
         memes = resp.get('Items', [])
+        
+        # Generate presigned URLs
+        for meme in memes:
+            if 's3_key' in meme:
+                meme['s3_url'] = generate_presigned_url(meme['s3_key'])
+        
         memes.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         return jsonify({'success': True, 'category': category_name, 'count': len(memes), 
                        'memes': json.loads(json.dumps(memes, default=decimal_default))}), 200
@@ -844,7 +915,6 @@ def api_analytics_overview():
         memes = memes_table.scan().get('Items', [])
         users_count = users_table.scan(Select='COUNT')['Count']
         
-        # Ensure all memes have default values
         for m in memes:
             m.setdefault('likes', 0)
             m.setdefault('views', 0)
@@ -855,13 +925,19 @@ def api_analytics_overview():
             cat = m.get('category', 'Unknown')
             cat_dist[cat] = cat_dist.get(cat, 0) + 1
         
+        top_memes = sorted(memes, key=lambda x: x.get('likes', 0), reverse=True)[:5]
+        # Generate presigned URLs for top memes
+        for meme in top_memes:
+            if 's3_key' in meme:
+                meme['s3_url'] = generate_presigned_url(meme['s3_key'])
+        
         analytics = {
             'total_memes': len(memes), 
             'total_users': users_count,
             'total_likes': sum(m.get('likes', 0) for m in memes),
             'total_views': sum(m.get('views', 0) for m in memes),
             'total_downloads': sum(m.get('downloads', 0) for m in memes),
-            'top_memes': sorted(memes, key=lambda x: x.get('likes', 0), reverse=True)[:5],
+            'top_memes': top_memes,
             'category_distribution': cat_dist, 
             'generated_at': datetime.now().isoformat()
         }
@@ -909,10 +985,7 @@ def too_large(e):
 def health():
     """Health check endpoint for monitoring"""
     try:
-        # Test S3 access
         s3.head_bucket(Bucket=BUCKET_NAME)
-        
-        # Test DynamoDB access
         memes_table.load()
         users_table.load()
         
@@ -932,11 +1005,9 @@ def health():
         }), 500
 
 if __name__ == '__main__':
-    # Check AWS resources instead of creating them
     resources_ok = check_aws_resources()
     
     if resources_ok:
-        # Initialize categories if everything is set up
         initialize_categories()
     
     print("\n" + "="*60)
